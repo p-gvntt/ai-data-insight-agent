@@ -1,0 +1,1 @@
+This project is a production-ready AI agent that can analyze any tabular dataset, perform EDA, clustering, anomaly detection, statistical validation, and generate senior-level insights and recommendations.
