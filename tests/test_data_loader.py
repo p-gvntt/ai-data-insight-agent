@@ -1,4 +1,8 @@
-# tests/test_data_loader.py
+"""
+tests/test_data_loader.py
+Run with: pytest tests/test_data_loader.py -v
+"""
+
 import io
 import pytest
 from analysis.data_loader import load_dataset 

@@ -1,3 +1,7 @@
+"""
+Loads CSV and Excel files into a pandas df
+"""
+
 import pandas as pd
 
 def load_dataset(file):
