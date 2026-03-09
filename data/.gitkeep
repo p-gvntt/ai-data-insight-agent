@@ -1,0 +1,6 @@
+# This directory contains raw dataset files for analysis
+# Files placed here will be loaded using the dataset loader.
+
+# Supported formats:
+# - CSV files: {dataset_name}.csv
+# - Excel files: {dataset_name}.xlsx
