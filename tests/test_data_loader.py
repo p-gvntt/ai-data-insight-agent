@@ -1,5 +1,5 @@
 """
-tests/test_data_loader.py
+Tests for analysis/data_loader.py
 Run with: pytest tests/test_data_loader.py -v
 """
 
