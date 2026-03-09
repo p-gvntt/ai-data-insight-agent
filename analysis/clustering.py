@@ -1,7 +1,6 @@
 """
 KMeans clustering with automatic optimal k via elbow method.
 """
-
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
@@ -13,17 +12,19 @@ def discover_clusters(df, max_k: int = 6) -> dict:
     Run KMeans clustering. Automatically selects best k
     using silhouette score. Returns labels and cluster summary.
     """
-    numeric = df.select_dtypes(include="number").dropna()
+    numeric = df.select_dtypes(include="number")
+
     if numeric.shape[1] < 2 or numeric.shape[0] < 10:
         return {"error": "Not enough numeric data for clustering (need ≥2 columns, ≥10 rows)."}
 
+    numeric_imputed = numeric.fillna(numeric.median())
+
     scaler = StandardScaler()
-    X = scaler.fit_transform(numeric)
+    X = scaler.fit_transform(numeric_imputed)
 
     best_k, best_score, best_labels = 2, -1, None
     scores = {}
-
-    for k in range(2, min(max_k + 1, numeric.shape[0])):
+    for k in range(2, min(max_k + 1, numeric_imputed.shape[0])):
         model = KMeans(n_clusters=k, random_state=42, n_init=10)
         labels = model.fit_predict(X)
         score = silhouette_score(X, labels)
@@ -35,10 +36,36 @@ def discover_clusters(df, max_k: int = 6) -> dict:
     unique, counts = np.unique(best_labels, return_counts=True)
     cluster_sizes = {f"cluster_{int(u)}": int(c) for u, c in zip(unique, counts)}
 
+    if best_score < 0.25:
+        quality = "weak"
+        quality_note = (
+            f"Silhouette score of {round(best_score, 4)} is weak (< 0.25). "
+            "Clusters are poorly separated and should not be treated as meaningful segments."
+        )
+    elif best_score < 0.5:
+        quality = "moderate"
+        quality_note = (
+            f"Silhouette score of {round(best_score, 4)} is moderate (0.25–0.5). "
+            "Clusters have some overlap and should be interpreted with caution."
+        )
+    else:
+        quality = "strong"
+        quality_note = (
+            f"Silhouette score of {round(best_score, 4)} is strong (> 0.5). "
+            "Clusters are well-separated and can be treated as meaningful segments."
+        )
+
+    singleton_clusters = [
+        f"cluster_{int(u)}" for u, c in zip(unique, counts) if c <= 2
+    ]
+
     return {
         "best_k": best_k,
         "best_silhouette_score": round(best_score, 4),
         "silhouette_scores_by_k": scores,
         "cluster_labels": best_labels.tolist(),
         "cluster_sizes": cluster_sizes,
+        "cluster_quality": quality,           
+        "cluster_quality_note": quality_note, 
+        "singleton_clusters": singleton_clusters, 
     }

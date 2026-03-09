@@ -178,6 +178,8 @@ def get_correlation_analysis(df: pd.DataFrame, threshold: float = 0.5) -> dict:
     """
     Pearson + Spearman correlation matrices.
     Notable pairs are those with |pearson_r| > threshold (default 0.5).
+    Each notable pair includes a plain_english description of direction
+    so downstream LLMs never need to interpret the sign themselves.
     """
     numeric = df.select_dtypes(include="number")
     if numeric.shape[1] < 2:
@@ -201,6 +203,18 @@ def get_correlation_analysis(df: pd.DataFrame, threshold: float = 0.5) -> dict:
                     "direction": "positive" if val > 0 else "negative",
                 })
     pairs.sort(key=lambda x: abs(x["pearson_r"]), reverse=True)
+
+    for p in pairs:
+        if p["direction"] == "negative":
+            p["plain_english"] = (
+                f"As {p['col_a']} increases, {p['col_b']} tends to decrease "
+                f"(r={p['pearson_r']})"
+            )
+        else:
+            p["plain_english"] = (
+                f"As {p['col_a']} increases, {p['col_b']} tends to increase "
+                f"(r={p['pearson_r']})"
+            )
 
     return {"pearson": pearson, "spearman": spearman, "notable_pairs": pairs}
 
