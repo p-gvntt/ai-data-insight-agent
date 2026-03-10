@@ -108,18 +108,78 @@ def _call_llm_with_retry(prompt: str, max_retries: int = 3, backoff: float = 2.0
     )
 
 
+def _infer_domain(eda: dict) -> str:
+    """
+    Infer the likely business domain from column names and sample values
+    so the LLM can anchor insights to the actual context of the data
+    rather than inventing generic business advice.
+    """
+    columns = []
+    for col, info in eda.get("columns", {}).items():
+        columns.append(col.lower())
+
+    col_str = ", ".join(columns)
+
+    # Simple heuristic hints passed to the LLM as context
+    hints = []
+    if any(w in col_str for w in ["fare", "ticket", "cabin", "embarked", "pclass", "survived"]):
+        hints.append("historical passenger transport (likely Titanic or similar voyage dataset)")
+    elif any(w in col_str for w in ["order", "purchase", "churn", "salary", "region", "customer"]):
+        hints.append("e-commerce or CRM customer dataset")
+    elif any(w in col_str for w in ["patient", "diagnosis", "treatment", "hospital", "disease"]):
+        hints.append("healthcare or medical dataset")
+    elif any(w in col_str for w in ["student", "grade", "score", "school", "exam"]):
+        hints.append("education dataset")
+    elif any(w in col_str for w in ["price", "stock", "market", "revenue", "profit"]):
+        hints.append("financial or sales dataset")
+
+    if hints:
+        domain = hints[0]
+        is_historical = "historical" in domain or "titanic" in domain.lower() or "voyage" in domain.lower()
+        if is_historical:
+            return (
+                f"This appears to be a {domain}. "
+                "This is a HISTORICAL RECORD, not a live business system. "
+                "There are NO customers, NO marketing campaigns, NO pricing strategies, "
+                "NO service enhancements, NO customer segmentation. "
+                "These words must NOT appear in your report. "
+                "People in this dataset are passengers, subjects, or records — not customers. "
+                "Business insights must focus ONLY on what patterns the historical data reveals "
+                "and what further statistical or analytical investigation would be valuable. "
+                "Recommendations must be purely analytical: further modelling, deeper statistical "
+                "testing, or data quality improvements. Nothing operational."
+            )
+        else:
+            return (
+                f"Based on the column names, this appears to be a {domain}. "
+                "Tailor all business insights and recommendations to this specific domain. "
+                "Do NOT suggest actions that are irrelevant to this domain."
+            )
+    else:
+        return (
+            "The business domain is unclear from the column names alone. "
+            "Keep business insights strictly factual and grounded in the data. "
+            "Do NOT invent a business context or suggest domain-specific actions "
+            "unless they are directly supported by the findings."
+        )
+
+
 def generate_insights(eda: dict, patterns: dict, stats: dict) -> str:
     """
     Generate structured insights from EDA, pattern detection,
     and statistical test results using an LLM.
     """
     data_context = _build_data_context(eda, patterns)
+    domain_context = _infer_domain(eda)
     eda_for_llm = _strip_correlation_matrices(eda)
 
     prompt = f"""
 You are a senior data analyst with 15+ years of experience.
 Below is the output of an automated data analysis pipeline.
 Use ONLY the data provided — do NOT invent numbers, percentages, or trends.
+
+DOMAIN CONTEXT (inferred from the data — anchor all insights to this):
+{domain_context}
 
 DATA CONTEXT (read before writing — these are hard facts about this specific dataset):
 {data_context}
@@ -151,7 +211,8 @@ Your task: Write a structured analytical report with the following sections:
      Do NOT reference any values from the pearson or spearman matrices directly.
      If the DATA CONTEXT says no strong correlations were found, state that explicitly
      and do not report any correlations at all.
-   - For each pair in notable_pairs, reproduce the plain_english field exactly as written.
+   - For each pair in notable_pairs, reproduce the plain_english field exactly as written,
+     as a plain sentence — do NOT wrap it in quotes or treat it as a quotation.
      Do NOT add any further interpretation, explanation, or context beyond the plain_english
      text itself. Do NOT explain what the correlation might mean or imply.
 
@@ -171,15 +232,26 @@ Your task: Write a structured analytical report with the following sections:
      that many anomaly rows to avoid contamination. Always mention this transparently.
 
 5. BUSINESS INSIGHTS
-   - What do these findings mean in a real-world context?
+   - What do these findings mean in the context of the DOMAIN CONTEXT above?
+   - Stay strictly within the inferred domain. If the domain is historical or ambiguous,
+     do NOT invent modern business recommendations (e.g. marketing campaigns, service
+     enhancements, product features). Instead, state what the data shows and what
+     further analysis would be warranted.
    - Only make recommendations that are actionable given the actual data available.
      Do NOT suggest collecting data that is already present, or fixing issues that do not exist.
    - Do NOT extrapolate or interpret correlations beyond what the plain_english field states.
      Do NOT infer causes, strategies, or explanations for a correlation unless explicitly
      stated in the data provided.
+   - Do NOT speculate about causes, social behaviours, historical context, or any explanation
+     for statistical findings unless that explanation is explicitly present in the data.
 
 6. RECOMMENDATIONS
    - Concrete next steps grounded strictly in the findings above
+   - Stay within the DOMAIN CONTEXT — do NOT suggest actions that belong to a
+     different business domain than the one inferred
+   - If the domain is historical or ambiguous, focus recommendations on further
+     analysis (e.g. deeper segmentation, predictive modelling) rather than
+     operational business actions
    - Do NOT include boilerplate recommendations that contradict the DATA CONTEXT
      (e.g. do not recommend fixing missing values if there are none)
 
