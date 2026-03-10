@@ -13,6 +13,7 @@ from agents.stats_agent import stats_agent
 from agents.insight_agent import generate_insights
 from agents.report_agent import generate_report
 from utils.results_saver import save_results
+from analysis.visualization import generate_all_charts, save_charts
 
 
 def run_analysis(file) -> dict:
@@ -24,8 +25,9 @@ def run_analysis(file) -> dict:
       4. Run statistical tests
       5. Generate LLM insights
       6. Produce final report
-      7. Save results to results/ folder
-    Returns a dict with the report string and saved file paths.
+      7. Generate visualizations
+      8. Save results to results/ folder
+    Returns a dict with the report string, charts, and saved file paths.
     """
     plan = create_plan()
     print(f"Pipeline steps: {plan}")
@@ -52,7 +54,20 @@ def run_analysis(file) -> dict:
     report = generate_report(insights, eda, patterns, stats)
     print("Report ready.")
 
-    saved = save_results(dataset_name, eda, patterns, stats, report)
-    print(f"Results saved to: {saved['folder']}")
+    # Generate all charts
+    charts = generate_all_charts(df, eda, patterns)
+    print(f"Charts generated: {list(charts.keys())}")
 
-    return {"report": report, "saved": saved}
+    saved = save_results(dataset_name, eda, patterns, stats, report)
+
+    # Save chart PNGs alongside the report
+    charts_dir = os.path.join(saved["folder"], "charts")
+    saved_charts = save_charts(charts, charts_dir)
+    print(f"Charts saved to: {charts_dir}")
+
+    return {
+        "report":  report,
+        "charts":  charts,   # figures available for Streamlit st.pyplot()
+        "saved":   saved,
+        "saved_charts": saved_charts,
+    }
