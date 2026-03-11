@@ -20,54 +20,75 @@ def run_analysis(file) -> dict:
     """
     Full pipeline:
       1. Load dataset
-      2. Run EDA
-      3. Detect patterns (clusters + anomalies)
-      4. Run statistical tests
-      5. Generate LLM insights
-      6. Produce final report
-      7. Generate visualizations
-      8. Save results to results/ folder
+      2. Plan — inspect data and decide which analyses to run
+      3. Run EDA
+      4. Detect patterns (clusters + anomalies) — conditionally
+      5. Run statistical tests — conditionally
+      6. Generate LLM insights — with planner focus hints
+      7. Produce final report
+      8. Generate visualizations
+      9. Save results to results/ folder
     Returns a dict with the report string, charts, and saved file paths.
     """
-    plan = create_plan()
-    print(f"Pipeline steps: {plan}")
-
     dataset_name = getattr(file, "name", "dataset")
     dataset_name = os.path.basename(dataset_name)
 
+    # Load
     df = load_dataset(file)
-    print(f"Dataset loaded: {df.shape[0]} rows × {df.shape[1]} columns")
+    print(f"Dataset loaded: {df.shape[0]} rows x {df.shape[1]} columns")
 
+    # Plan
+    plan = create_plan(df)
+    print(f"Pipeline steps: {plan['steps']}")
+    if plan["skip"]:
+        print(f"Skipped: {plan['skip']}")
+    for note in plan.get("notes", []):
+        print(f"  ! {note}")
+    for hint in plan.get("focus", []):
+        print(f"  -> {hint}")
+
+    # EDA
     eda = eda_agent(df)
     print("EDA complete.")
 
-    patterns = pattern_agent(df)
+    # Pattern detection (conditional)
+    if "discover_clusters" in plan["steps"] or "detect_anomalies" in plan["steps"]:
+        patterns = pattern_agent(df, eda=eda)
+    else:
+        patterns = {"clusters": None, "anomalies": None, "skipped": plan["skip"]}
     print("Pattern detection complete.")
 
+    # Statistical tests
     anomaly_labels = patterns.get("anomalies", {}).get("labels", None)
-    stats = stats_agent(df, anomaly_labels=anomaly_labels)
-    print("Statistical tests complete.")
+    if "run_statistical_tests" in plan["steps"]:
+        stats = stats_agent(df, anomaly_labels=anomaly_labels)
+        print("Statistical tests complete.")
+    else:
+        stats = {}
+        print("Statistical tests skipped.")
 
-    insights = generate_insights(eda, patterns, stats)
+    # Insights
+    insights = generate_insights(eda, patterns, stats, focus=plan["focus"])
     print("Insights generated.")
 
+    # Report
     report = generate_report(insights, eda, patterns, stats)
     print("Report ready.")
 
-    # Generate all charts
+    # Visualizations
     charts = generate_all_charts(df, eda, patterns)
     print(f"Charts generated: {list(charts.keys())}")
 
+    # Save
     saved = save_results(dataset_name, eda, patterns, stats, report)
-
-    # Save chart PNGs alongside the report
     charts_dir = os.path.join(saved["folder"], "charts")
     saved_charts = save_charts(charts, charts_dir)
     print(f"Charts saved to: {charts_dir}")
 
     return {
-        "report":  report,
-        "charts":  charts,   # figures available for Streamlit st.pyplot()
-        "saved":   saved,
+        "report":       report,
+        "charts":       charts,
+        "saved":        saved,
         "saved_charts": saved_charts,
+        "plan":         plan,
     }

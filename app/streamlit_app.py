@@ -35,6 +35,39 @@ _SUPPRESSION_MESSAGES = {
     "anomaly_scatter":     "ℹ️ No anomalies detected — anomaly plot not shown.",
 }
 
+def _format_report(report: str) -> str:
+    """
+    Convert ALL-CAPS text to Title Case for cleaner Streamlit rendering.
+    Handles both section headers (## 1. DATASET OVERVIEW) and bold
+    recommendation labels (**TARGETED MARKETING**: ...).
+    Leaves code blocks and the metadata header untouched.
+    """
+    import re
+    lines = report.split("\n")
+    result = []
+    in_code_block = False
+    for line in lines:
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+        if in_code_block:
+            result.append(line)
+            continue
+        line = re.sub(
+            r'(#{1,3}\s*\d*\.?\s*)([A-Z][A-Z ]+)',
+            lambda m: m.group(1) + m.group(2).title(),
+            line
+        )
+        line = re.sub(
+            r'\*\*([A-Z][A-Z ]{2,})\*\*',
+            lambda m: "**" + m.group(1).title() + "**",
+            line
+        )
+        if len(line.strip()) > 60 and re.match(r'^\*\*[^*].+[^*]\*\*\.?$', line.strip()):
+            line = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+        result.append(line)
+    return "\n".join(result)
+
+
 def _suppressed_note(name: str, suppressed: list) -> bool:
     if name in suppressed:
         st.info(_SUPPRESSION_MESSAGES.get(name, f"ℹ️ {name} not available for this dataset."))
@@ -129,8 +162,19 @@ else:
     else:
         selected = st.selectbox("Choose a dataset", available)
         if selected:
-            file = open(os.path.join(DATA_DIR, selected), "rb")
-            file.name = selected
+            class NamedFile:
+                """Wraps a BufferedReader to add a writable name attribute,
+                matching the interface of a Streamlit UploadedFile."""
+                def __init__(self, path, name):
+                    self._f = open(path, "rb")
+                    self.name = name
+                def read(self, *args): return self._f.read(*args)
+                def seek(self, *args): return self._f.seek(*args)
+                def tell(self): return self._f.tell()
+                def __enter__(self): return self
+                def __exit__(self, *args): self._f.close()
+
+            file = NamedFile(os.path.join(DATA_DIR, selected), selected)
 
 
 # Run analysis
@@ -144,13 +188,13 @@ if file:
                 charts = result.get("charts", {})
 
                 st.success("Analysis complete!")
-                st.info(f"**Results saved to:** `{saved['folder']}`")
+                st.info(f"**Results saved in the folder!**")
 
                 # Top-level tabs: Report | Visual Analysis
                 tab_report, tab_charts = st.tabs(["📋 Report", "📊 Visual Analysis"])
 
                 with tab_report:
-                    st.markdown(report)
+                    st.markdown(_format_report(report))
                     st.download_button(
                         label="⬇️ Download Report (.txt)",
                         data=report,
@@ -193,7 +237,7 @@ if os.path.exists(RESULTS_DIR):
             if os.path.exists(report_path):
                 with open(report_path) as f:
                     past_report = f.read()
-                st.markdown(past_report)
+                st.markdown(_format_report(past_report))
                 st.download_button(
                     label="⬇️ Download Past Report",
                     data=past_report,
