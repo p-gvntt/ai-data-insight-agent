@@ -193,3 +193,5 @@ LLMs default to generic business language regardless of dataset context. A histo
 - LLM output is constrained by prompt instructions but not programmatically validated — unusual datasets may still produce imperfect reports
 - Column selection uses name-pattern matching — columns with non-standard names may fall back to the CV heuristic
 - Domain inference is heuristic-based — ambiguous datasets fall back to generic factual language
+
+Buon divertimento! 🎉
