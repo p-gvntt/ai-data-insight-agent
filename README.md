@@ -86,6 +86,9 @@ ai-data-insight-agent/
 │   ├── insight_agent.py          # LLM insight generation
 │   └── report_agent.py           # Report formatting
 ├── data/                         # Place datasets here
+├── docs/
+│   ├── index.html               # Demo documentation page
+│   └── media/                   # Demo videos and assets
 ├── utils/
 │   └── results_saver.py          # Saves outputs to results/
 ├── tests/

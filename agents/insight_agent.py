@@ -141,13 +141,16 @@ def _infer_domain(eda: dict) -> str:
                 f"This appears to be a {domain}. "
                 "This is a HISTORICAL RECORD, not a live business system. "
                 "There are NO customers, NO marketing campaigns, NO pricing strategies, "
-                "NO service enhancements, NO customer segmentation. "
-                "These words must NOT appear in your report. "
+                "NO service enhancements, NO customer segmentation, NO customer profiles. "
+                "These words must NOT appear anywhere in your report — including in Recommendations. "
                 "People in this dataset are passengers, subjects, or records — not customers. "
                 "Business insights must focus ONLY on what patterns the historical data reveals "
                 "and what further statistical or analytical investigation would be valuable. "
                 "Recommendations must be purely analytical: further modelling, deeper statistical "
-                "testing, or data quality improvements. Nothing operational."
+                "testing, or data quality improvements. Nothing operational. "
+                "EXCEPTION: if the ANALYSIS FOCUS section identifies a binary target variable "
+                "(e.g. survived), you MUST address it — explain which variables are associated "
+                "with it and recommend predictive modelling specifically for that target."
             )
         else:
             return (
@@ -164,7 +167,7 @@ def _infer_domain(eda: dict) -> str:
         )
 
 
-def generate_insights(eda: dict, patterns: dict, stats: dict) -> str:
+def generate_insights(eda: dict, patterns: dict, stats: dict, focus: list = None) -> str:
     """
     Generate structured insights from EDA, pattern detection,
     and statistical test results using an LLM.
@@ -173,6 +176,18 @@ def generate_insights(eda: dict, patterns: dict, stats: dict) -> str:
     domain_context = _infer_domain(eda)
     eda_for_llm = _strip_correlation_matrices(eda)
 
+    focus_context = ""
+    if focus:
+        focus_lines = "\n".join(f"  - {f}" for f in focus)
+        focus_context = f"""
+
+ANALYSIS FOCUS (identified by the planner — you MUST address these):
+{focus_lines}
+These are MANDATORY focus areas for THIS specific dataset.
+You MUST address each one explicitly in sections 5 and 6.
+Do NOT write generic insights that ignore these focus areas.
+"""
+
     prompt = f"""
 You are a senior data analyst with 15+ years of experience.
 Below is the output of an automated data analysis pipeline.
@@ -180,7 +195,7 @@ Use ONLY the data provided — do NOT invent numbers, percentages, or trends.
 
 DOMAIN CONTEXT (inferred from the data — anchor all insights to this):
 {domain_context}
-
+{focus_context}
 DATA CONTEXT (read before writing — these are hard facts about this specific dataset):
 {data_context}
 
@@ -246,6 +261,14 @@ Your task: Write a structured analytical report with the following sections:
      for statistical findings unless that explanation is explicitly present in the data.
 
 6. RECOMMENDATIONS
+   - This section contains a numbered list that ALWAYS starts at 1.
+     Example format:
+       1. Do this first thing.
+       2. Do this second thing.
+     NEVER start at 6, 7, or any number other than 1.
+   - Write each recommendation as a plain sentence — do NOT bold the
+     text, do NOT use **markdown bold** anywhere in this section
+   - Do NOT wrap recommendation text in asterisks or any markdown formatting
    - Concrete next steps grounded strictly in the findings above
    - Stay within the DOMAIN CONTEXT — do NOT suggest actions that belong to a
      different business domain than the one inferred

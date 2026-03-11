@@ -8,6 +8,31 @@ import numpy as np
 from scipy import stats
 
 
+# Patterns that indicate an ID or surrogate key column — meaningless in correlations
+_ID_PATTERNS = [
+    "id", "_id", "id_", "customerid", "customer_id", "userid", "user_id",
+    "rowid", "row_id", "index", "record_id", "recordid", "uuid", "guid",
+    "order_id", "orderid", "transaction_id", "transactionid", "seq", "sequence",
+]
+
+
+def _is_id_like(series: pd.Series) -> bool:
+    """
+    Returns True if the column looks like an identifier and should be
+    excluded from correlation analysis and statistical tests.
+    Checks:
+      1. Column name matches a known ID pattern (case-insensitive)
+      2. All values are unique (nunique == len) — classic surrogate key
+    """
+    name_lower = series.name.lower().replace(" ", "_")
+    if any(name_lower == pat or name_lower.endswith(pat) or name_lower.startswith(pat)
+           for pat in _ID_PATTERNS):
+        return True
+    if series.nunique() == len(series):
+        return True
+    return False
+
+
 def get_shape_info(df: pd.DataFrame) -> dict:
     return {
         "rows": df.shape[0],
@@ -178,6 +203,8 @@ def get_correlation_analysis(df: pd.DataFrame, threshold: float = 0.5) -> dict:
     """
     Pearson + Spearman correlation matrices.
     Notable pairs are those with |pearson_r| > threshold (default 0.5).
+    ID-like columns (name matches known ID patterns, or all values unique)
+    are excluded before computing pairs — they produce spurious correlations.
     Each notable pair includes a plain_english description of direction
     so downstream LLMs never need to interpret the sign themselves.
     """
@@ -185,10 +212,16 @@ def get_correlation_analysis(df: pd.DataFrame, threshold: float = 0.5) -> dict:
     if numeric.shape[1] < 2:
         return {}
 
-    pearson = numeric.corr(method="pearson").round(4).to_dict()
+    # Filter out ID-like columns from pair computation only
+    non_id_cols = [col for col in numeric.columns if not _is_id_like(numeric[col])]
+
+    pearson  = numeric.corr(method="pearson").round(4).to_dict()
     spearman = numeric.corr(method="spearman").round(4).to_dict()
 
-    corr_matrix = numeric.corr(method="pearson")
+    if len(non_id_cols) < 2:
+        return {"pearson": pearson, "spearman": spearman, "notable_pairs": []}
+
+    corr_matrix = numeric[non_id_cols].corr(method="pearson")
     cols = corr_matrix.columns.tolist()
     pairs = []
     for i in range(len(cols)):
